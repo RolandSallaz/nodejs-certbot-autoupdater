@@ -28,22 +28,30 @@ function runCertbot(command: string, callback: (error: Error | null, stdout?: st
 
 function checkAndUpdateCertificate() {
     const currentDate = new Date();
-
     const dataDir = path.dirname(dataFilePath);
+
+    // Создаем директорию для данных, если она не существует
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
     }
 
     if (!fs.existsSync(dataFilePath)) {
-        const initialData = {
-            lastUpdated: currentDate.toISOString(),
-        };
-
-        fs.writeFile(dataFilePath, JSON.stringify(initialData, null, 2), (err) => {
-            if (err) {
-                console.error('Ошибка при записи в файл:', err);
+        // Если файл не существует, создаем сертификат
+        const command = `certbot certonly --non-interactive --email ${config.email} --agree-tos -d ${config.domain}`;
+        runCertbot(command, (error) => {
+            if (error) {
+                console.error('Ошибка при создании сертификата.');
             } else {
-                console.log('Файл updateDate.json создан. Дата обновления:', currentDate);
+                const initialData = {
+                    lastUpdated: currentDate.toISOString(),
+                };
+                fs.writeFile(dataFilePath, JSON.stringify(initialData, null, 2), (err) => {
+                    if (err) {
+                        console.error('Ошибка при записи в файл:', err);
+                    } else {
+                        console.log('Файл updateDate.json создан. Дата обновления:', currentDate);
+                    }
+                });
             }
         });
     } else {
