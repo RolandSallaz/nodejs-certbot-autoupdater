@@ -29,6 +29,11 @@ function runCertbot(command: string, callback: (error: Error | null, stdout?: st
 function checkAndUpdateCertificate() {
     const currentDate = new Date();
 
+    const dataDir = path.dirname(dataFilePath);
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+
     if (!fs.existsSync(dataFilePath)) {
         const initialData = {
             lastUpdated: currentDate.toISOString(),
