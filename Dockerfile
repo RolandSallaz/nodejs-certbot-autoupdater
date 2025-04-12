@@ -1,4 +1,4 @@
-FROM node:21-alpine
+FROM node:22-alpine
 
 # Устанавливаем необходимые пакеты, включая Python и Certbot
 RUN apk add --no-cache python3 py3-pip certbot
