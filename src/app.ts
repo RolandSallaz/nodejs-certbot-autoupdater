@@ -8,8 +8,10 @@ import cron from 'node-cron';
 const app = express();
 
 app.use(express.json());
+app.use('/.well-known', express.static('/var/www/certbot')); // webroot для certbot
+
 const dataFilePath = path.join(__dirname, 'data', 'updateDate.json');
-const certDir = path.join(__dirname, 'ssl');
+const certDir = '/app/ssl';
 
 function runCertbot(command: string, callback: (error: Error | null, stdout?: string) => void) {
     exec(command, { cwd: certDir, shell: '/bin/sh' }, (error, stdout, stderr) => {
@@ -18,10 +20,9 @@ function runCertbot(command: string, callback: (error: Error | null, stdout?: st
             return callback(error);
         }
         if (stderr) {
-            console.error(`Ошибка: ${stderr}`);
-            return callback(new Error(stderr));
+            console.error(`stderr: ${stderr}`);
         }
-        console.log(`Результат: ${stdout}`);
+        console.log(`stdout: ${stdout}`);
         callback(null, stdout);
     });
 }
@@ -29,80 +30,52 @@ function runCertbot(command: string, callback: (error: Error | null, stdout?: st
 function checkAndUpdateCertificate() {
     const currentDate = new Date();
     const dataDir = path.dirname(dataFilePath);
-
-    // Создаем директорию для данных, если она не существует
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-    }
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
     if (!fs.existsSync(dataFilePath)) {
-        // Если файл не существует, создаем сертификат
-        const command = `certbot certonly --non-interactive --email ${config.email} --agree-tos -d ${config.domain}`;
+        const command = `certbot certonly --webroot -w /var/www/certbot \
+--non-interactive --agree-tos --email ${config.email} -d ${config.domain} \
+--config-dir /app/ssl --work-dir /app/ssl --logs-dir /app/ssl/logs`;
+
         runCertbot(command, (error) => {
-            if (error) {
-                console.error('Ошибка при создании сертификата.');
-            } else {
-                const initialData = {
-                    lastUpdated: currentDate.toISOString(),
-                };
-                fs.writeFile(dataFilePath, JSON.stringify(initialData, null, 2), (err) => {
-                    if (err) {
-                        console.error('Ошибка при записи в файл:', err);
-                    } else {
-                        console.log('Файл updateDate.json создан. Дата обновления:', currentDate);
-                    }
-                });
+            if (!error) {
+                fs.writeFileSync(dataFilePath, JSON.stringify({ lastUpdated: currentDate.toISOString() }, null, 2));
+                console.log('Сертификат создан и записан.');
             }
         });
     } else {
-        fs.readFile(dataFilePath, 'utf8', (err, data) => {
-            if (err) {
-                console.error('Ошибка при чтении файла:', err);
-                return;
-            }
-
-            const jsonData = JSON.parse(data);
+        try {
+            const jsonData = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
             const lastUpdated = new Date(jsonData.lastUpdated);
-            const timeDiff = currentDate.getTime() - lastUpdated.getTime();
-            const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-
-            console.log(`Дата последнего обновления: ${lastUpdated.toISOString()}`);
-            console.log(`Прошло дней с последнего обновления: ${daysDiff}`);
+            const daysDiff = Math.floor((Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24));
 
             if (daysDiff > 85) {
-                const command = `certbot certonly --non-interactive --email ${config.email} --agree-tos -d ${config.domain}`;
+                const command = `certbot certonly --webroot -w /var/www/certbot \
+--non-interactive --agree-tos --email ${config.email} -d ${config.domain} \
+--config-dir /app/ssl --work-dir /app/ssl --logs-dir /app/ssl/logs`;
+
                 runCertbot(command, (error) => {
-                    if (error) {
-                        console.error('Ошибка обновления сертификата.');
-                    } else {
-                        const updatedData = {
-                            lastUpdated: currentDate.toISOString(),
-                        };
-                        fs.writeFile(dataFilePath, JSON.stringify(updatedData, null, 2), (err) => {
-                            if (err) {
-                                console.error('Ошибка при записи в файл:', err);
-                            } else {
-                                console.log('Сертификат успешно обновлен. Дата обновления:', currentDate);
-                            }
-                        });
+                    if (!error) {
+                        fs.writeFileSync(dataFilePath, JSON.stringify({ lastUpdated: currentDate.toISOString() }, null, 2));
+                        console.log('Сертификат обновлён.');
                     }
                 });
             } else {
-                console.log('Сертификат еще не требует обновления.');
+                console.log('Сертификат ещё действителен.');
             }
-        });
+        } catch (e) {
+            console.error('Ошибка парсинга JSON:', e);
+        }
     }
 }
 
 checkAndUpdateCertificate();
 
 cron.schedule('0 0 * * *', () => {
-    console.log('Запуск ежедневной проверки сертификатов...');
+    console.log('Запущена ежедневная проверка сертификата...');
     checkAndUpdateCertificate();
 });
 
-
 app.listen(config.port, () => {
-    console.log(`Server running on port ${config.port}`);
+    console.log(`Сервер запущен на порту ${config.port}`);
 });
-
