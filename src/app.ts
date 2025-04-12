@@ -12,7 +12,7 @@ const dataFilePath = path.join(__dirname, 'data', 'updateDate.json');
 const certDir = path.join(__dirname, 'ssl');
 
 function runCertbot(command: string, callback: (error: Error | null, stdout?: string) => void) {
-    exec(command, { cwd: certDir }, (error, stdout, stderr) => {
+    exec(command, { cwd: certDir, shell: '/bin/sh' }, (error, stdout, stderr) => {
         if (error) {
             console.error(`Ошибка: ${error.message}`);
             return callback(error);
